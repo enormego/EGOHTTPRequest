@@ -29,7 +29,10 @@
 	id _delegate;
 	
 	BOOL isStarted;
+	BOOL isFinished;
 	BOOL isCancelled;
+	
+	NSThread* _backgroundThread;
 }
 
 + (NSMutableArray*)currentRequests;
@@ -51,6 +54,7 @@
 @property(nonatomic,readonly,getter=URL) NSURL* url;
 @property(nonatomic,readonly) NSError* error;
 @property(nonatomic,readonly,getter=isStarted) BOOL started;
+@property(nonatomic,readonly,getter=isFinished) BOOL finished;
 @property(nonatomic,readonly,getter=isCancelled) BOOL cancelled;
 
 @property(nonatomic,retain) NSURLResponse* response;

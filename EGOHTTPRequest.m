@@ -18,7 +18,7 @@ static NSLock* __requestsLock;
 @implementation EGOHTTPRequest
 @synthesize url=_URL, response=_response, delegate=_delegate, timeoutInterval=_timeoutInterval, 
 			didFinishSelector=_didFinishSelector, didFailSelector=_didFailSelector, error=_error,
-			cancelled=isCancelled, started=isStarted;
+			cancelled=isCancelled, started=isStarted, finished=isFinished;
 
 - (id)initWithURL:(NSURL*)aURL {
 	return [self initWithURL:aURL delegate:nil];
@@ -81,9 +81,27 @@ static NSLock* __requestsLock;
 	[[[self class] currentRequests] addObject:request];
 	[[[self class] _requestsLock] unlock];
 
+	[self performSelectorInBackground:@selector(startConnectionInBackgroundWithRequest:) withObject:request];
+	[request release];
+}
+
+- (void)startConnectionInBackgroundWithRequest:(NSURLRequest*)request {
+	NSAutoreleasePool* pool = [[NSAutoreleasePool alloc] init];
+	_backgroundThread = [[NSThread currentThread] retain];
+	
 	_connection = [[NSURLConnection alloc] initWithRequest:request delegate:self startImmediately:YES];
 	
-	[request release];
+	while(!self.cancelled && !self.finished) {
+		[[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate distantFuture]];
+	}
+	
+	[_backgroundThread release];
+	_backgroundThread = nil;
+	
+	[_connection release];
+	_connection = nil;
+	
+	[pool release];
 }
 
 + (void)cleanUpRequest:(EGOHTTPRequest*)request {
@@ -110,7 +128,9 @@ static NSLock* __requestsLock;
 	if(self.cancelled) return;
 	else isCancelled = YES;
 	
-	[_connection cancel];
+	isFinished = YES;
+	
+	[_connection performSelector:@selector(cancel) onThread:_backgroundThread withObject:nil waitUntilDone:YES];
 	
 	[[self class] cleanUpRequest:self];
 }
@@ -160,14 +180,17 @@ static NSLock* __requestsLock;
 - (void)connectionDidFinishLoading:(NSURLConnection *)connection {
 	if(connection != _connection) return;
 
-	[self.delegate retain];
+	if(!self.cancelled) {
+		[self.delegate retain];
 
-	if([self.delegate respondsToSelector:self.didFinishSelector]) {
-		[self.delegate performSelector:self.didFinishSelector withObject:self];
+		if([self.delegate respondsToSelector:self.didFinishSelector]) {
+			[self.delegate performSelector:self.didFinishSelector withObject:self];
+		}
+		
+		[self.delegate release];
 	}
 	
-	[self.delegate release];
-	
+	isFinished = YES;
 	[[self class] cleanUpRequest:self];
 }
 
@@ -185,6 +208,7 @@ static NSLock* __requestsLock;
 	
 	[self.delegate release];
 	
+	isFinished = YES;
 	[[self class] cleanUpRequest:self];
 }
 
@@ -192,6 +216,7 @@ static NSLock* __requestsLock;
 - (void)dealloc {
 	[[self class] cleanUpRequest:self];
 	
+	isFinished = YES;
 	self.response = nil;
 	self.delegate = nil;
 	[_requestHeaders release];
