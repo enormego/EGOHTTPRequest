@@ -219,6 +219,7 @@ static NSLock* __requestsLock;
 	isFinished = YES;
 	self.response = nil;
 	self.delegate = nil;
+	[_responseData release]; _responseData=nil;
 	[_requestHeaders release];
 	[_connection release];
 	[_error release];
