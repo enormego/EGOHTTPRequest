@@ -92,7 +92,7 @@ static NSLock* __requestsLock;
 	}
 	
 	[[[self class] _requestsLock] lock];
-	[[[self class] currentRequests] addObject:request];
+	[[[self class] currentRequests] addObject:self];
 	[[[self class] _requestsLock] unlock];
 
 	[self performSelectorInBackground:@selector(startConnectionInBackgroundWithRequest:) withObject:request];
@@ -129,10 +129,11 @@ static NSLock* __requestsLock;
 	NSArray* requests = [[self currentRequests] copy];
 	
 	for(EGOHTTPRequest* request in requests) {
-		if(![request isKindOfClass:[EGOHTTPRequest class]]) continue;
-		if(request.delegate == delegate) {
-			request.delegate = nil;
-			[request cancel];
+		if([request isKindOfClass:[EGOHTTPRequest class]]){
+			if(request.delegate == delegate) {
+				request.delegate = nil;
+				[request cancel];
+			}
 		}
 	}
 	
