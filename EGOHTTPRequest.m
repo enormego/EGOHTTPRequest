@@ -3,11 +3,25 @@
 //  EGOHTTPRequest
 //
 //  Created by Shaun Harrison on 12/2/09.
-//  Copyright 2009 enormego. All rights reserved.
+//  Copyright (c) 2009-2010 enormego
 //
-//  This work is licensed under the Creative Commons GNU General Public License License.
-//  To view a copy of this license, visit http://creativecommons.org/licenses/GPL/2.0/
-//  or send a letter to Creative Commons, 171 Second Street, Suite 300, San Francisco, California, 94105, USA.
+//  Permission is hereby granted, free of charge, to any person obtaining a copy
+//  of this software and associated documentation files (the "Software"), to deal
+//  in the Software without restriction, including without limitation the rights
+//  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+//  copies of the Software, and to permit persons to whom the Software is
+//  furnished to do so, subject to the following conditions:
+//
+//  The above copyright notice and this permission notice shall be included in
+//  all copies or substantial portions of the Software.
+//
+//  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+//  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+//  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+//  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+//  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+//  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+//  THE SOFTWARE.
 //
 
 #import "EGOHTTPRequest.h"
@@ -64,7 +78,7 @@ static NSLock* __requestsLock;
 }
 
 - (void)startAsynchronous {
-	if(self.started || self.cancelled) return;
+	if(isStarted || isCancelled) return;
 	else isStarted = YES;
 	
 	NSMutableURLRequest* request = [[NSMutableURLRequest alloc] initWithURL:self.url
@@ -91,7 +105,7 @@ static NSLock* __requestsLock;
 	
 	_connection = [[NSURLConnection alloc] initWithRequest:request delegate:self startImmediately:YES];
 	
-	while(!self.cancelled && !self.finished) {
+	while(!isCancelled && !isFinished) {
 		[[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate distantFuture]];
 	}
 	
@@ -117,6 +131,7 @@ static NSLock* __requestsLock;
 	for(EGOHTTPRequest* request in requests) {
 		if(![request isKindOfClass:[EGOHTTPRequest class]]) continue;
 		if(request.delegate == delegate) {
+			request.delegate = nil;
 			[request cancel];
 		}
 	}
@@ -125,7 +140,7 @@ static NSLock* __requestsLock;
 }
 
 - (void)cancel {
-	if(self.cancelled) return;
+	if(isCancelled) return;
 	else isCancelled = YES;
 	
 	isFinished = YES;
@@ -180,14 +195,10 @@ static NSLock* __requestsLock;
 - (void)connectionDidFinishLoading:(NSURLConnection *)connection {
 	if(connection != _connection) return;
 
-	if(!self.cancelled) {
-		[self.delegate retain];
-
+	if(!isCancelled) {
 		if([self.delegate respondsToSelector:self.didFinishSelector]) {
 			[self.delegate performSelector:self.didFinishSelector withObject:self];
 		}
-		
-		[self.delegate release];
 	}
 	
 	isFinished = YES;
@@ -200,13 +211,11 @@ static NSLock* __requestsLock;
 	[_error release];
 	_error = [error retain];
 
-	[self.delegate retain];
-	
-	if([self.delegate respondsToSelector:self.didFailSelector]) {
-		[self.delegate performSelector:self.didFailSelector withObject:self withObject:error];
+	if(!isCancelled) {
+		if([self.delegate respondsToSelector:self.didFailSelector]) {
+			[self.delegate performSelector:self.didFailSelector withObject:self withObject:error];
+		}
 	}
-	
-	[self.delegate release];
 	
 	isFinished = YES;
 	[[self class] cleanUpRequest:self];
