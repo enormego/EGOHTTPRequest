@@ -47,6 +47,9 @@
 	BOOL isCancelled;
 	
 	NSThread* _backgroundThread;
+	
+	NSString* _requestMethod;
+	NSData* _requestBody;
 }
 
 + (NSMutableArray*)currentRequests;
@@ -58,7 +61,11 @@
 - (void)addRequestHeader:(NSString *)header value:(NSString *)value;
 
 - (void)startAsynchronous;
+- (void)startSynchronous;
 - (void)cancel;
+
+@property(nonatomic,retain) NSString* requestMethod; // Default: GET
+@property(nonatomic,retain) NSData* requestBody;
 
 @property(nonatomic,readonly) NSData* responseData;
 @property(nonatomic,readonly) NSString* responseString;

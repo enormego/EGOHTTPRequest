@@ -29,10 +29,18 @@
 static NSMutableArray* __currentRequests;
 static NSLock* __requestsLock;
 
+@interface EGOHTTPRequest ()
++ (void)cleanUpRequest:(EGOHTTPRequest*)request;
++ (NSLock*)_requestsLock;
+- (NSURLRequest*)_buildURLRequest;
+@end
+
+
 @implementation EGOHTTPRequest
 @synthesize url=_URL, response=_response, delegate=_delegate, timeoutInterval=_timeoutInterval, 
 			didFinishSelector=_didFinishSelector, didFailSelector=_didFailSelector, error=_error,
-			cancelled=isCancelled, started=isStarted, finished=isFinished;
+			cancelled=isCancelled, started=isStarted, finished=isFinished, requestMethod=_requestMethod,
+			requestBody=_requestBody;
 
 - (id)initWithURL:(NSURL*)aURL {
 	return [self initWithURL:aURL delegate:nil];
@@ -77,15 +85,25 @@ static NSLock* __requestsLock;
 	[_requestHeaders setObject:value forKey:header];
 }
 
-- (void)startAsynchronous {
-	if(isStarted || isCancelled) return;
+- (NSURLRequest*)_buildURLRequest {
+	if(isStarted || isCancelled) return nil;
 	else isStarted = YES;
 	
 	NSMutableURLRequest* request = [[NSMutableURLRequest alloc] initWithURL:self.url
 																cachePolicy:NSURLRequestReturnCacheDataElseLoad
 															timeoutInterval:self.timeoutInterval];
 	
-	[request setValue:@"gzip" forHTTPHeaderField:@"Accept-Encoding"]; 
+	[request setValue:@"gzip" forHTTPHeaderField:@"Accept-Encoding"];
+	
+	if(_requestMethod) {
+		[request setHTTPMethod:_requestMethod];
+	} else {
+		[request setHTTPMethod:@"GET"];
+	}
+	
+	if(_requestBody) {
+		[request setHTTPBody:_requestBody];
+	}
 	
 	for(NSString* key in _requestHeaders) {
 		[request setValue:[_requestHeaders objectForKey:key] forHTTPHeaderField:key];
@@ -94,9 +112,51 @@ static NSLock* __requestsLock;
 	[[[self class] _requestsLock] lock];
 	[[[self class] currentRequests] addObject:self];
 	[[[self class] _requestsLock] unlock];
+	
+	return [request autorelease];
+}
 
-	[self performSelectorInBackground:@selector(startConnectionInBackgroundWithRequest:) withObject:request];
-	[request release];
+- (void)startAsynchronous {
+	NSURLRequest* request = [self _buildURLRequest];
+	
+	if(request) {
+		[self performSelectorInBackground:@selector(startConnectionInBackgroundWithRequest:) withObject:request];
+	}
+}
+
+- (void)startSynchronous {
+	NSURLRequest* request = [self _buildURLRequest];
+	if(!request) return;
+	
+	NSURLResponse* aResponse = nil;
+	NSError* anError = nil;
+	NSData* responseData = [NSURLConnection sendSynchronousRequest:request returningResponse:&aResponse error:&anError];
+	
+	[_responseData setData:responseData];
+	self.response = aResponse;
+	
+	if(_error) [_error release];
+	
+	if(anError) {
+		_error = [anError retain];
+		
+		if(!isCancelled) {
+			if([self.delegate respondsToSelector:self.didFailSelector]) {
+				[self.delegate performSelector:self.didFailSelector withObject:self withObject:_error];
+			}
+		}		
+	} else {
+		_error = nil;
+
+		if(!isCancelled) {
+			if([self.delegate respondsToSelector:self.didFinishSelector]) {
+				[self.delegate performSelector:self.didFinishSelector withObject:self];
+			}
+		}
+	}
+	
+	isFinished = YES;
+	[[self class] cleanUpRequest:self];
 }
 
 - (void)startConnectionInBackgroundWithRequest:(NSURLRequest*)request {
@@ -183,6 +243,8 @@ static NSLock* __requestsLock;
 	}
 }
 
+#pragma mark -
+#pragma mark Asynchrous NSURLConnection Methods
 - (void)connection:(NSURLConnection *)connection didReceiveData:(NSData *)data {
 	if(connection != _connection) return;
 	[_responseData appendData:data];
@@ -222,6 +284,7 @@ static NSLock* __requestsLock;
 	[[self class] cleanUpRequest:self];
 }
 
+#pragma mark -
 
 - (void)dealloc {
 	[[self class] cleanUpRequest:self];
