@@ -169,6 +169,10 @@ static NSLock* __requestsLock;
 		[[NSRunLoop currentRunLoop] runMode:NSDefaultRunLoopMode beforeDate:[NSDate distantFuture]];
 	}
 	
+	if(isCancelled) {
+		[_connection cancel];
+	}
+
 	[_backgroundThread release];
 	_backgroundThread = nil;
 	
@@ -186,7 +190,9 @@ static NSLock* __requestsLock;
 }
 
 + (void)cancelRequestsForDelegate:(id)delegate {
+	[[self _requestsLock] lock];
 	NSArray* requests = [[self currentRequests] copy];
+	[[self _requestsLock] unlock];
 	
 	for(EGOHTTPRequest* request in requests) {
 		if([request isKindOfClass:[EGOHTTPRequest class]]){
@@ -206,7 +212,7 @@ static NSLock* __requestsLock;
 	
 	isFinished = YES;
 	
-	[_connection performSelector:@selector(cancel) onThread:_backgroundThread withObject:nil waitUntilDone:YES];
+	// No need to call cancel because flagging as cancelled will cancel the request in the thread.
 	
 	[[self class] cleanUpRequest:self];
 }
@@ -293,11 +299,11 @@ static NSLock* __requestsLock;
 	self.response = nil;
 	self.delegate = nil;
 	[_responseData release]; _responseData=nil;
-	[_requestHeaders release];
-	[_connection release];
-	[_error release];
-	[_URL release];
-	
+	[_requestHeaders release], _requestHeaders = nil;
+	[_connection release], _connection = nil;
+	[_error release], _error = nil;
+	[_URL release], _URL = nil;
+
 	[super dealloc];
 }
 
